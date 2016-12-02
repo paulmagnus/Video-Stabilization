@@ -1079,7 +1079,17 @@ void R2Image::stabilize(std::string dirName, int numImage, int numFeatures, doub
 		fprintf(stderr, "Number of features must be at least 4 you gave %d features", numFeatures);
 		exit(1);
 	}
+
 	std::vector<track> tracks = findTrack(dirName, numImage, numFeatures, sigma);
+
+	// remove bad tracks
+	for (int i = 0; i < tracks.size(); i++) {
+		if (!tracks[i].isValid()) {
+			tracks.erase(tracks.begin() + i);
+			i--;
+		}
+	}
+
 	for (track t : tracks) {
 		for (int i = 0; i < t.size() - 1; i++) {
 			vec2 point1 = t.getPosition(i);
@@ -1155,7 +1165,10 @@ R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double s
 			// search near original feature location
 			for (int dx = -width * 0.1; dx < width * 0.1; dx++) {
 				for (int dy = -height * 0.1; dy < height * 0.1; dy++) {
-					float ssd = getSSD(3 * sigma, 3 * sigma, *this, featurePoints[i].x, featurePoints[i].y, other, featurePoints[i].x + dx, featurePoints[i].y + dy);
+					float ssd = getSSD(3 * sigma, 3 * sigma,
+						*this, featurePoints[i].x, featurePoints[i].y, other,
+						featurePoints[i].x + dx, featurePoints[i].y + dy);
+
 					if (ssd <= bestSSD) {
 						bestSSD = ssd;
 						loc.x = bound(featurePoints[i].x + dx, width);
@@ -1178,12 +1191,68 @@ R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double s
 			exit(1);
 		}
 
+		// verify features through RANSAC
+		print("\nDetermining false matches\n");
+
+		std::vector<unsigned int> paths;
+
+		mat3 bestTransformMatrix(0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+		for (int n = 0; n < numFeatures / 10; n++) {
+			std::vector<unsigned int> inlierPaths;
+
+			// randomly select 4 tracks
+			std::vector<unsigned int> indecies = getRandoms(4, numFeatures);
+
+			std::vector<Pair> pairs;
+			for (int i = 0; i < 4; i++) {
+				pairs.push_back(Pair(featurePoints[indecies[i]], otherFeatures[indecies[i]]));
+			}
+
+
+			mat3 transformationMatrix = getHomographyMatrix(pairs);
+
+			// check all features
+			for (unsigned int i = 0; i < numFeatures; i++) {
+				// project features according to transformation matrix
+				vec3 feature(featurePoints[i].x, featurePoints[i].y, 1);
+				vec3 projectedFeatureH = transformationMatrix * feature;
+
+				if (projectedFeatureH.z != 0) {
+					vec2 projectedFeature(projectedFeatureH.x / projectedFeatureH.z, projectedFeatureH.y / projectedFeatureH.z);
+
+					// determine distance between actual motion and projected motion
+					double dist = (projectedFeature - otherFeatures[i]).length();
+
+					// if within distance threshold, add to inlierTracks
+					if (dist <= 4)
+						inlierPaths.push_back(i);
+				}
+			}
+			if (inlierPaths.size() > paths.size()) {
+				paths = inlierPaths;
+				bestTransformMatrix = transformationMatrix;
+			}
+		}
+		print("Done\n");
+
+		// set features that are not vaild based on RANSAC
+		int index = 0;
+		for (int i = 0; i < featurePoints.size(); i++)
+			if (index < paths.size() && paths[index] == i) {
+				index++;
+			}
+			else
+				otherFeatures[i].x = -1;
+
+		// first time, add first image's features to list
 		if (tracks[0].size() == 0) {
 			for (int i = 0; i < featurePoints.size(); i++) {
 				tracks[i].addPosition(featurePoints[i]);
 			}
 		}
 
+		// add other features to list
 		for(int i = 0; i < otherFeatures.size(); i++) {
 			tracks[i].addPosition(otherFeatures[i]);
 		}
@@ -1928,9 +1997,3 @@ WriteJPEG(const char *filename) const
 	return 0;
 #endif
 }
-
-
-
-
-
-
