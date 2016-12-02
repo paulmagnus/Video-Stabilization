@@ -24,6 +24,14 @@ struct track {
 	bool isValid(int frame) {
 		return positions[frame].x > 0 && positions[frame].y > 0;
 	}
+
+	bool isValid() {
+		for (vec2 pos : positions)
+			if (pos.x < 0)
+				return false;
+		return true;
+	}
+
 	/*
 	void printOut() {
 		print("[");
