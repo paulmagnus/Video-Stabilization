@@ -1068,10 +1068,14 @@ padZeroNumber(int num) {
 	std::string ret = std::to_string(num);
 
 	int str_length = ret.length();
-	for (int i = 0; i < 7 - str_length; i++) {
+	for (int i = 0; i < 5 - str_length; i++) {
 		ret = "0" + ret;
 	}
 	return ret;
+}
+
+bool pointIsValid(vec2 point, int width, int height) {
+	return point.x >= 0 && point.x < width && point.y >= 0 && point.y < height;
 }
 
 void R2Image::stabilize(std::string dirName, int numImage, int numFeatures, double sigma) {
@@ -1086,24 +1090,39 @@ void R2Image::stabilize(std::string dirName, int numImage, int numFeatures, doub
 		for (int i = 0; i < t.size() - 1; i++) {
 			vec2 point1 = t.getPosition(i);
 			vec2 point2 = t.getPosition(i + 1);
-			line(point1.x, point2.x, point1.y, point2.y, 1, 0, 0);
+			if(pointIsValid(point1, width, height) && pointIsValid(point2, width, height))
+				line(point1.x, point2.x, point1.y, point2.y, 1, 0, 0);
 		}
 	}
 }
 
-bool contains(std::vector<feature> * vec, const vec2 & o) {
-	for (int i = 0; i < vec->size(); i++)
-		if (vec->at(i).point.x == o.x && vec->at(i).point.y == o.y)
-			return true;
-	return false;
-}
 
 struct feature {
 	vec2 point;
 	int track;
 
+	feature() : point(), track(0) {}
 	feature(vec2 p, int t) : point(p), track(t) {}
 };
+
+struct list {
+	std::vector<feature> v;
+	list() : v(0) {}
+	list(std::vector<feature> vec) : v(vec) {}
+	feature at(int i) {
+		return v.at(i);
+	}
+	size_t size() {
+		return v.size();
+	}
+};
+
+bool contains(list v, const vec2 & o) {
+	for (int i = 0; i < v.size(); i++)
+		if (v.at(i).point.x == o.x && v.at(i).point.y == o.y)
+			return true;
+	return false;
+}
 
 std::vector<vec2> toVec2List(const std::vector<feature> & list) {
 	std::vector<vec2> r(0);
@@ -1132,7 +1151,7 @@ R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double s
 	std::vector<feature> featurePoints(0);
 	int nextFeature = 0;
 
-	for (int i = 0; i < numImages - 1; i++) {
+	for (int i = 1; i < numImages; i++) {
 		std::string current = padZeroNumber(i);
 		std::string curFileName = dirName + "/" + current + ".jpg";
 		std::string next = padZeroNumber(i + 1);
@@ -1170,8 +1189,10 @@ R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double s
 							pixel.y = y;
 						}
 					}
-				if(!contains(&featurePoints, pixel))
+				if (!contains(list(featurePoints), pixel)) {
 					featurePoints.push_back(feature(pixel, nextFeature));
+					nextFeature++;
+				}
 
 				// no pixel within 10 pixels should be considered further
 				for (int dx = -10; dx <= 10; dx++)
@@ -1233,7 +1254,7 @@ R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double s
 			std::vector<unsigned int> indecies = getRandoms(4, numFeatures);
 
 			std::vector<fPair> pairs;
-			for (int j = 0; i < 4; j++) {
+			for (int j = 0; j < 4; j++) {
 				pairs.push_back(fPair(featurePoints[indecies[j]], otherFeatures[indecies[j]]));
 			}
 
@@ -1241,7 +1262,7 @@ R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double s
 			mat3 transformationMatrix = getHomographyMatrix(toVec2List(pairs));
 
 			// check all features
-			for (unsigned int j = 0; i < numFeatures; j++) {
+			for (unsigned int j = 0; j < numFeatures; j++) {
 				// project features according to transformation matrix
 				vec3 feature(featurePoints[j].point.x, featurePoints[j].point.y, 1);
 				vec3 projectedFeatureH = transformationMatrix * feature;
@@ -1264,6 +1285,8 @@ R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double s
 		}
 		print("Done\n");
 
+
+		print("Removing false matches...");
 		// set features that are not vaild based on RANSAC
 		int index = 0;
 		for (int j = 0; j < featurePoints.size(); j++)
@@ -1272,6 +1295,7 @@ R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double s
 			}
 			else
 				otherFeatures[j].point.x = -1;
+		print("Done\n");
 
 		// first time, add first image's features to list
 		if (tracks[0].size() == 0) {
@@ -1286,6 +1310,7 @@ R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double s
 				tracks[featurePoints[j].track].addPosition(otherFeatures[j].point);
 			else {
 				tracks.push_back(track());
+				assert(featurePoints[j].track < tracks.size());
 				for (int k = 0; k < i; k++)
 					tracks[featurePoints[j].track].addPosition(vec2(-1, -1));
 				tracks[featurePoints[j].track].addPosition(otherFeatures[j].point);
@@ -1293,8 +1318,8 @@ R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double s
 		}
 
 		// remove bad tracks
-		for (int j = 0; j < tracks.size(); j++) {
-			if (!tracks[j].isValid()) {
+		for (int j = 0; j < otherFeatures.size(); j++) {
+			if (!tracks[otherFeatures[j].track].isValid()) {
 				otherFeatures.erase(otherFeatures.begin() + j);
 				j--;
 			}
