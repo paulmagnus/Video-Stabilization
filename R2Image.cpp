@@ -1074,6 +1074,47 @@ padZeroNumber(int num) {
 	return ret;
 }
 
+// update 12/8
+int R2Image::transformFrames(const std::vector<R2Image*> & images,
+	const std::vector<mat3*> & transformationMatricies,
+	const std::string & folderName) {
+
+	assert(images.size() == transformationMatricies.size());
+
+	for (int i = 0; i < images.size(); i++) {
+		std::string current = padZeroNumber(i);
+		std::string curFileName = folderName + "/" + current + ".jpg";
+		if (!images[i]->transformFrame(transformationMatricies[i], curFileName.c_str()))
+			return 0;	// failure
+	}
+	// success
+	return 1;
+}
+
+// update 12/8
+int R2Image::transformFrame(mat3 * transformMatrix, const char* filename) {
+	R2Image tmpImage(*this);
+	for (double x = 0; x < width; x++) {
+		for (double y = 0; y < height; y++) {
+			vec3 projectedPoint = *transformMatrix * vec3(x, y, 1);
+			if (projectedPoint.z == 0)
+				print("Error: w value was 0");
+			else {
+				int projectedX = round(projectedPoint.x / projectedPoint.z);
+				int projectedY = round(projectedPoint.y / projectedPoint.z);
+
+				if (projectedX >= 0 && projectedX < width && projectedY >= 0 && projectedY < height) {
+					// projected point is on the other image
+					tmpImage.Pixel(x, y) = this->Pixel(projectedX, projectedY);
+				}
+				else
+					tmpImage.SetPixel(x, y, R2Pixel(0, 0, 0, 1));
+			}
+		}
+	}
+	return tmpImage.Write(filename);
+}
+
 bool pointIsValid(vec2 point, int width, int height) {
 	return point.x >= 0 && point.x < width && point.y >= 0 && point.y < height;
 }
