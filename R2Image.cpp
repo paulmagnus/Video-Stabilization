@@ -1204,6 +1204,13 @@ R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double s
 
 		// other features are numFeatures of feature points on the second frame
 
+		/*
+		The following section should be updated to check for translation only (see MatchTranslation above),
+		much of the code from MatchTranslation may be able to be copied right into here just as we did with
+		MatchHomography before.
+		It should also be updated to save the dx and dy for each frame rather than the feature positions.
+		We could just save the dx and dy as a single "track" since a track object can hold a pair of floats for each frame.
+		*/
 		if (featurePoints.size() < numFeatures) {
 			/* Find features in this image */
 			R2Image harris(*this);
