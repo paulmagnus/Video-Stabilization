@@ -89,6 +89,10 @@ class R2Image {
   void blendOtherImageHomography(R2Image * otherImage, double sigma, int numFeatures);
   std::vector<track> findTrack(std::string dirName, int numImages, int numFeatures, double sigma);
   void stabilize(std::string dirName, int numImages, int numFeatures, double sigma);
+  int transformFrame(mat3 * transformMatrix, const char* filename);
+  int transformFrames(const std::vector<R2Image*> & images,
+	  const std::vector<mat3*> & transformationMatricies,
+	  const std::string & folderName);
 
   // File reading/writing
   int Read(const char *filename);
