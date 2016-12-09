@@ -48,7 +48,7 @@ static char options[] =
 "  -matchTranslation <file:other_image> <real:sigma> <int:num_features>\n"
 "  -matchHomography <file:other_image> <real:sigma> <int:num_features>\n"
 "  -blendHomography <file:other_imgae> <real:sigma> <int:num_features>\n"
-"  -stabilize <folder_name> <int:num_images> <real_sigma> <int:num_features>";
+"  -stabilize <string:folder_name> <string:out_dir_name> <int:num_images> <real_sigma> <int:num_features>";
 
 static void
 ShowUsage(void)
@@ -243,13 +243,14 @@ main(int argc, char **argv)
 			image->Features(sigma, numFeatures);
 		}
 		else if (!strcmp(*argv, "-stabilize")) {
-			CheckOption(*argv, argc, 5);
-			double sigma = atof(argv[3]);
-			int numFeatures = atoi(argv[4]);
+			CheckOption(*argv, argc, 6);
+			double sigma = atof(argv[4]);
+			int numFeatures = atoi(argv[5]);
 			std::string folderName(argv[1]);
-			int numImages = atoi(argv[2]);
-			argv += 5; argc -= 5;
-			image->stabilize(folderName, numImages, numFeatures, sigma);
+			std::string outDirName(argv[2]);
+			int numImages = atoi(argv[3]);
+			argv += 6; argc -= 6;
+			image->stabilize(folderName, outDirName, numImages, numFeatures, sigma);
 		}
 
 		else {
