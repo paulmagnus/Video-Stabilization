@@ -87,8 +87,8 @@ class R2Image {
   // further operations
   void blendOtherImageTranslated(R2Image * otherImage, double sigma, int numFeatures);
   void blendOtherImageHomography(R2Image * otherImage, double sigma, int numFeatures);
-  std::vector<track> findTrack(std::string dirName, int numImages, int numFeatures, double sigma);
-  void stabilize(std::string dirName, int numImages, int numFeatures, double sigma);
+  std::vector<vec2> findTrack(std::string dirName, int numImages, int numFeatures, double sigma);
+  void stabilize(std::string dirName, std::string outDirName, int numImages, int numFeatures, double sigma);
   int transformFrame(mat3 * transformMatrix, const char* filename);
   int transformFrames(const std::vector<R2Image*> & images,
 	  const std::vector<mat3*> & transformationMatricies,
