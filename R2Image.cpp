@@ -386,9 +386,9 @@ SobelX(void)
 {
 	// Apply the Sobel oprator to the image in X direction
 
-	float kernel[3][3] = { {-0.25, 0, 0.25},
-						{-0.5, 0, 0.5},
-						{-0.25, 0, 0.25} };
+	float kernel[3][3] = { { -0.25, 0, 0.25 },
+	{ -0.5, 0, 0.5 },
+	{ -0.25, 0, 0.25 } };
 
 	R2Image tempImage(*this);
 	for (int x = 0; x < width; x++)
@@ -406,9 +406,9 @@ SobelY(void)
 {
 	// Apply the Sobel oprator to the image in Y direction
 
-	float kernel[3][3] = { {-0.25, -0.5, -0.25},
-						{0, 0, 0},
-						{0.25, 0.5, 0.25} };
+	float kernel[3][3] = { { -0.25, -0.5, -0.25 },
+	{ 0, 0, 0 },
+	{ 0.25, 0.5, 0.25 } };
 
 	R2Image tempImage(*this);
 	for (int x = 0; x < width; x++)
@@ -557,13 +557,13 @@ void R2Image::line(int x0, int x1, int y0, int y1, float r, float g, float b)
 	/*
 	if (x0 > 3 && x0 < width - 3 && y0>3 && y0 < height - 3)
 	{
-		for (int x = x0 - 3; x <= x0 + 3; x++)
-		{
-			for (int y = y0 - 3; y <= y0 + 3; y++)
-			{
-				Pixel(x, y).Reset(r, g, b, 1.0);
-			}
-		}
+	for (int x = x0 - 3; x <= x0 + 3; x++)
+	{
+	for (int y = y0 - 3; y <= y0 + 3; y++)
+	{
+	Pixel(x, y).Reset(r, g, b, 1.0);
+	}
+	}
 	}
 	*/
 
@@ -895,9 +895,9 @@ Sharpen()
 {
 	// Sharpen an image using a linear filter. Use a kernel of your choosing.
 
-	int kernel[3][3] = { {-1, -1, -1},
-					{-1, 8, -1},
-					{-1, -1, -1} };
+	int kernel[3][3] = { { -1, -1, -1 },
+	{ -1, 8, -1 },
+	{ -1, -1, -1 } };
 
 	R2Image tempImage(*this);
 	for (int x = 1; x < width - 1; x++)
@@ -1119,21 +1119,61 @@ bool pointIsValid(vec2 point, int width, int height) {
 	return point.x >= 0 && point.x < width && point.y >= 0 && point.y < height;
 }
 
-void R2Image::stabilize(std::string dirName, int numImage, int numFeatures, double sigma) {
+void R2Image::stabilize(std::string dirName, std::string outDirName, int numImage, int numFeatures, double sigma) {
 	if (numFeatures < 4) {
 		fprintf(stderr, "Number of features must be at least 4 you gave %d features", numFeatures);
 		exit(1);
 	}
 
-	std::vector<track> tracks = findTrack(dirName, numImage, numFeatures, sigma);
+	std::vector<vec2> tracks = findTrack(dirName, numImage, numFeatures, sigma);
+	std::vector<vec2> positions(0);
 
-	for (track t : tracks) {
-		for (int i = 0; i < t.size() - 1; i++) {
-			vec2 point1 = t.getPosition(i);
-			vec2 point2 = t.getPosition(i + 1);
-			if(pointIsValid(point1, width, height) && pointIsValid(point2, width, height))
-				line(point1.x, point2.x, point1.y, point2.y, 1, 0, 0);
+	for (int i = 0; i < tracks.size(); i++) {
+		if (i == 0)
+			positions.push_back(vec2(0, 0));
+		else {
+			vec2 prev = positions[i - 1];
+			positions.push_back(vec2(prev.x + tracks[i].x, prev.y + tracks[i].y));
 		}
+	}
+
+	std::vector<vec2> blurredGraphs(0);
+
+#define SIGMA 2.0
+
+	std::vector<float> kernel(0);
+	//std::vector<vec2> positionMove(0);
+
+	float sum = 0;
+	// compute the gaussian values for the kernel
+	for (int i = 0; i < ceil(6 * SIGMA + 1); i++) {
+#pragma warning(suppress: 4244)
+		float gauss = computeGaussian(SIGMA, i - 3 * SIGMA);
+		kernel.push_back(gauss);
+		sum += gauss;
+	}
+
+	for (unsigned int i = 0; i < kernel.size(); i++)
+		kernel[i] = kernel[i] / sum;
+
+	for (int x = 0; x < positions.size(); x++) {
+		vec2 sum(0,0);
+		for (unsigned int i = 0; i < kernel.size(); i++) {
+#pragma warning(suppress: 4244)
+			sum += positions[bound(ceil(x + i - 3 * sigma), positions.size())] * kernel[i];
+		}
+
+		// blurredPos = position + positionMove
+		// blurredPos = position - position + sum
+		// blurredPos = sum
+		//positionMove.push_back(sum - positions[x]);
+		vec2 move = sum - positions[x];
+
+		std::string current = padZeroNumber(x+1);
+		std::string curFileName = dirName + "/" + current + ".jpg";
+		std::string outFileName = outDirName + "/" + current + ".jpg";
+		R2Image curImage(curFileName.c_str());
+		curImage.transformFrame(&mat3().translation(move.x, move.y), outFileName.c_str());
 	}
 }
 
@@ -1184,15 +1224,17 @@ std::vector<Pair> toVec2List(const std::vector<fPair> & list) {
 	return r;
 }
 
-std::vector<track>
+std::vector<vec2>
 R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double sigma) {
 
-	std::vector<track> tracks(numFeatures);
+	std::vector<vec2> tracks(0);
 
 	std::vector<feature> featurePoints(0);
 	int nextFeature = 0;
 
 	for (int i = 1; i < numImages; i++) {
+
+		// we want to deal with 2 frames at the same time
 		std::string current = padZeroNumber(i);
 		std::string curFileName = dirName + "/" + current + ".jpg";
 		std::string next = padZeroNumber(i + 1);
@@ -1211,12 +1253,12 @@ R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double s
 		It should also be updated to save the dx and dy for each frame rather than the feature positions.
 		We could just save the dx and dy as a single "track" since a track object can hold a pair of floats for each frame.
 		*/
+
 		if (featurePoints.size() < numFeatures) {
 			/* Find features in this image */
 			R2Image harris(*this);
 			harris.Harris(sigma);
 			print("Done computing harris\n");
-
 
 			print("Obtain %d feature points\n", numFeatures);
 			while (featurePoints.size() < numFeatures) {
@@ -1237,10 +1279,13 @@ R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double s
 							pixel.y = y;
 						}
 					}
+
+
 				if (!contains(list(featurePoints), pixel)) {
 					featurePoints.push_back(feature(pixel, nextFeature));
 					nextFeature++;
 				}
+
 
 				// no pixel within 10 pixels should be considered further
 				for (int dx = -10; dx <= 10; dx++)
@@ -1252,16 +1297,17 @@ R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double s
 			print("Collected all feature points\n\n");
 		}
 
-		print("Searching for transformed features\n");
+		print("Searching for translated features\n");
 		/* Search for the same features in the other image */
 		std::vector<feature> otherFeatures(0);
 		for (unsigned int j = 0; j < featurePoints.size(); j++) {
-			print("\r%u features found", otherFeatures.size());
+			//print("\r%u features found", otherFeatures.size());
 			float bestSSD = FLT_MAX;
 			vec2 loc(0, 0);
+
 			// search near original feature location
-			for (int dx = -width * 0.1; dx < width * 0.1; dx++) {
-				for (int dy = -height * 0.1; dy < height * 0.1; dy++) {
+			for (int dx = -width * 0.05; dx < width * 0.05; dx++) {
+				for (int dy = -height * 0.05; dy < height * 0.05; dy++) {
 					float ssd = getSSD(3 * sigma, 3 * sigma,
 						*this, featurePoints[j].point.x, featurePoints[j].point.y, other,
 						featurePoints[j].point.x + dx, featurePoints[j].point.y + dy);
@@ -1284,7 +1330,7 @@ R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double s
 		print("\r%u features found", otherFeatures.size());
 
 		if (featurePoints.size() != otherFeatures.size()) {
-			print("\nError in finding transformed features");
+			print("\nError in finding translated features");
 			exit(1);
 		}
 
@@ -1292,88 +1338,34 @@ R2Image::findTrack(std::string dirName, int numImages, int numFeatures, double s
 		print("\nDetermining false matches\n");
 
 		std::vector<unsigned int> paths;
-
-		mat3 bestTransformMatrix(0, 0, 0, 0, 0, 0, 0, 0, 0);
+		vec2 bestPath;
 
 		for (int n = 0; n < numFeatures / 10; n++) {
 			std::vector<unsigned int> inlierPaths;
 
-			// randomly select 4 tracks
-			std::vector<unsigned int> indecies = getRandoms(4, numFeatures);
-
-			std::vector<fPair> pairs;
-			for (int j = 0; j < 4; j++) {
-				pairs.push_back(fPair(featurePoints[indecies[j]], otherFeatures[indecies[j]]));
-			}
-
-
-			mat3 transformationMatrix = getHomographyMatrix(toVec2List(pairs));
+			// randomly select a single track
+			int index = rand() % numFeatures;
+			vec2 randomPath = otherFeatures[index].point - featurePoints[index].point;
 
 			// check all features
-			for (unsigned int j = 0; j < numFeatures; j++) {
-				// project features according to transformation matrix
-				vec3 feature(featurePoints[j].point.x, featurePoints[j].point.y, 1);
-				vec3 projectedFeatureH = transformationMatrix * feature;
+			for (unsigned int i = 0; i < numFeatures; i++) {
+				// project features according to random path
+				vec2 projectedFeature = featurePoints[i].point + randomPath;
 
-				if (projectedFeatureH.z != 0) {
-					vec2 projectedFeature(projectedFeatureH.x / projectedFeatureH.z, projectedFeatureH.y / projectedFeatureH.z);
+				// determine distance between actual motion and projected motion
+				double dist = (projectedFeature - otherFeatures[i].point).length();
 
-					// determine distance between actual motion and projected motion
-					double dist = (projectedFeature - otherFeatures[j].point).length();
-
-					// if within distance threshold, add to inlierTracks
-					if (dist <= 4)
-						inlierPaths.push_back(j);
-				}
+				// if within distance threshold add to inlierPaths
+				if (dist <= 4)
+					inlierPaths.push_back(i);
 			}
 			if (inlierPaths.size() > paths.size()) {
 				paths = inlierPaths;
-				bestTransformMatrix = transformationMatrix;
+				bestPath = randomPath;
 			}
 		}
-		print("Done\n");
-
-
-		print("Removing false matches...");
-		// set features that are not vaild based on RANSAC
-		int index = 0;
-		for (int j = 0; j < featurePoints.size(); j++)
-			if (index < paths.size() && paths[index] == j) {
-				index++;
-			}
-			else
-				otherFeatures[j].point.x = -1;
-		print("Done\n");
-
-		// first time, add first image's features to list
-		if (tracks[0].size() == 0) {
-			for (int j = 0; j < featurePoints.size(); j++) {
-				tracks[featurePoints[j].track].addPosition(featurePoints[j].point);
-			}
-		}
-
-		// add other features to list
-		for (int j = 0; j < otherFeatures.size(); j++) {
-			if(featurePoints[j].track < tracks.size())
-				tracks[featurePoints[j].track].addPosition(otherFeatures[j].point);
-			else {
-				tracks.push_back(track());
-				assert(featurePoints[j].track < tracks.size());
-				for (int k = 0; k < i; k++)
-					tracks[featurePoints[j].track].addPosition(vec2(-1, -1));
-				tracks[featurePoints[j].track].addPosition(otherFeatures[j].point);
-			}
-		}
-
-		// remove bad tracks
-		for (int j = 0; j < otherFeatures.size(); j++) {
-			if (!tracks[otherFeatures[j].track].isValid()) {
-				otherFeatures.erase(otherFeatures.begin() + j);
-				j--;
-			}
-		}
-
-		featurePoints = otherFeatures;
+		tracks.push_back(bestPath);
+		printf("Done\n");
 	}
 	return tracks;
 }
